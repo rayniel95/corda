@@ -1,5 +1,8 @@
 package net.corda.netparams
 
+import net.corda.nodeapi.internal.network.generateWhitelist
+import net.corda.nodeapi.internal.network.readIncludeWhitelist
+import net.corda.nodeapi.internal.ContractsJarFile
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigParseOptions
@@ -105,6 +108,12 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
     @Option(names = ["--keypass"], description = ["Password of signing key"])
     private var keyPass: String? = null
 
+    @Option(names = ["--cordapps"], description = ["List of cordapps to be whitelisted"])
+    private var cordappJars: MutableList<Path> = mutableListOf<Path>()
+
+    // TODO - move this to a better place
+    private val contractsJarConverter = ::ContractsJarFile
+
     private fun getInput(prompt: String): String {
         print(prompt)
         System.out.flush()
@@ -206,7 +215,9 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
         return nodeInfo.legalIdentities.last()
     }
 
-    fun parseConfig(config: Config, optionalNotaryList: List<NotaryInfo>): NetworkParameters {
+    fun parseConfig(
+        config: Config, optionalNotaryList: List<NotaryInfo>
+    ): NetworkParameters {
 
         // convert the notary list (of nodeinfo paths) to NotaryInfos
         val notaryList: List<NotaryInfo> = config.getConfigList("notaries").map {
@@ -222,7 +233,11 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
                 maxTransactionSize = config.getInt("maxTransactionSize"),
                 epoch = config.getInt("epoch"),
                 modifiedTime = Instant.now(),
-                whitelistedContractImplementations = emptyMap(), // TODO: not supported
+                // TODO - add signed cordapps support
+                whitelistedContractImplementations = generateWhitelist(
+                    null, listOf(), cordappJars.map(this.contractsJarConverter), 
+                    listOf(), listOf()
+                ), 
                 notaries = notaryList + optionalNotaryList
         )
     }

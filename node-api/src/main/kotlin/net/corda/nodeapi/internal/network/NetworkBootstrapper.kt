@@ -55,9 +55,9 @@ import kotlin.streams.toList
 class NetworkBootstrapper
 @VisibleForTesting
 constructor(private val initSerEnv: Boolean,
-                     private val embeddedCordaJar: () -> URL,
-                     private val nodeInfosGenerator: (List<Path>) -> List<Path>,
-                     private val contractsJarConverter: (Path) -> ContractsJar) : NetworkBootstrapperWithOverridableParameters {
+            private val embeddedCordaJar: () -> URL,
+            private val nodeInfosGenerator: (List<Path>) -> List<Path>,
+            private val contractsJarConverter: (Path) -> ContractsJar) : NetworkBootstrapperWithOverridableParameters {
 
     constructor() : this(
             initSerEnv = true,
