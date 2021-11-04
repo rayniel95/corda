@@ -6,6 +6,7 @@ import net.corda.nodeapi.internal.ContractsJarFile
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigParseOptions
+import com.typesafe.config.ConfigSyntax
 import net.corda.cliutils.CordaCliWrapper
 import net.corda.cliutils.start
 import net.corda.core.identity.Party
@@ -48,7 +49,7 @@ import java.time.Instant
  * Values for the NetworkParameters are specified in a configuration file (in HOCON format),
  * using the --config option. An example content is shown below:
  *
- *    notaries : []
+ *    notaries = []
  *    minimumPlatformVersion = 1
  *    maxMessageSize = 10485760
  *    maxTransactionSize = 10485760
@@ -115,7 +116,7 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
     private val contractsJarConverter = ::ContractsJarFile
 
     private fun getInput(prompt: String): String {
-        print(prompt)
+        println(prompt)
         System.out.flush()
         val console = System.console()
         if (console != null)
@@ -126,6 +127,7 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
 
     private object AMQPInspectorSerializationScheme : AbstractAMQPSerializationScheme(emptyList()) {
         override fun canDeserializeVersion(magic: CordaSerializationMagic, target: SerializationContext.UseCase): Boolean {
+            // return magic == amqpMagic && target == SerializationContext.UseCase.P2P
             return magic == amqpMagic
         }
 
@@ -165,9 +167,9 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
         }
 
         val networkParameters = parametersFromConfig(configFile!!, n1 + n2)
-        print(networkParameters.toString())
+        println(networkParameters.toString())
 
-        val signingkey = if (keyStorePath != null) {
+        val signingCertAndKeyPair = if (keyStorePath != null) {
 
             require(keyAlias != null) { "The --keyAlias parameters must be specified" }
 
@@ -178,24 +180,23 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
                 keyPass = getInput("Key password (${keyAlias}): ")
 
             val keyStore = X509KeyStore.fromFile(keyStorePath!!, keyStorePass!!)
-            val signingKey = keyStore.getCertificateAndKeyPair(keyAlias!!, keyPass!!)
-            val x509Chain = keyStore.getCertificateChain(keyAlias!!)
 
-            CertificatePathAndKeyPair(x509Chain, signingKey)
+            keyStore.getCertificateAndKeyPair(keyAlias!!, keyPass!!)
         } else {
             // issue from the development root
-            CertificatePathAndKeyPair(emptyList(), createDevNetworkMapCa())
+            createDevNetworkMapCa()
         }
 
         // sign and include the certificate path
-        val signedNetParams = networkParameters.signWithCertPath(signingkey.keyPair.private, signingkey.certPath)
+        val signedAndSerializedNetParams = signingCertAndKeyPair.sign(networkParameters).serialize()
 
         if (outputFile != null) {
-            print("\nWriting: " + outputFile)
-            val ssnp = signedNetParams.serialize()
-            ssnp.open().copyTo(outputFile!!, StandardCopyOption.REPLACE_EXISTING)
+            println("\nWriting: " + outputFile)
+            signedAndSerializedNetParams.open().copyTo(outputFile!!, StandardCopyOption.REPLACE_EXISTING)
         } else {
-            print("\nUse --output to write results")
+            // TODO - use a predefined name
+            // signedAndSerializedNetParams.open().copyTo(Paths.get("./netParams"))
+            println("\nUse --output to write results")
         }
 
         return 0
@@ -243,10 +244,10 @@ class NetParamsSigner : CordaCliWrapper("netparams-signer", "Sign network parame
     }
 
     fun parametersFromConfig(file: Path, notaryList: List<NotaryInfo>): NetworkParameters {
-
-        val parseOptions = ConfigParseOptions.defaults().setAllowMissing(true)
-        val config = ConfigFactory.parseFile(file.toFile(), parseOptions).resolve()
-
+        val parseOptions = ConfigParseOptions.defaults().setSyntax(
+            ConfigSyntax.JSON
+        ).setAllowMissing(false)
+        val config = ConfigFactory.parseFileAnySyntax(file.toFile(), parseOptions).resolve()
         return parseConfig(config, notaryList)
     }
 }
